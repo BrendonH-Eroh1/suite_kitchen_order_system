@@ -3,6 +3,7 @@ import '../config/app_info.dart';
 import '../services/device_credentials.dart';
 import '../services/kitchen_station_service.dart';
 import 'kitchen_display_screen.dart';
+import 'qr_scan_screen.dart';
 
 /// One-time KDS provisioning: enter the device PAT (issued by the SiS admin
 /// app), pick the kitchen station this tablet serves, and set the operator
@@ -44,6 +45,18 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
     _patCtl.dispose();
     _operatorCtl.dispose();
     super.dispose();
+  }
+
+  /// Open the camera scanner; on a valid provisioning QR, fill the fields
+  /// and immediately save + load stations (same as the manual Save button).
+  Future<void> _scanQr() async {
+    final scanned = await Navigator.of(context).push<ScannedCredentials>(
+      MaterialPageRoute(builder: (_) => const QrScanScreen()),
+    );
+    if (scanned == null || !mounted) return;
+    _deviceIdCtl.text = scanned.deviceId;
+    _patCtl.text = scanned.pat;
+    await _saveCredentials();
   }
 
   Future<void> _saveCredentials() async {
@@ -137,6 +150,34 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
                   style: TextStyle(
                       fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
+              // Primary path: scan the provisioning QR (device_id + PAT).
+              SizedBox(
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _saving ? null : _scanQr,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Scan provisioning QR',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2C7BE5),
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('or enter manually',
+                        style: TextStyle(color: Colors.grey.shade500)),
+                  ),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _deviceIdCtl,
                 decoration: const InputDecoration(

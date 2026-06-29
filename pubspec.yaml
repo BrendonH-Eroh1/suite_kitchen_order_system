@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.1.0                 # proxy calls (ApiClient)
   shared_preferences: ^2.2.2   # per-device PAT + station (DeviceCredentials)
+  mobile_scanner: ^6.0.0       # QR provisioning (scan device PAT)
 
 dev_dependencies:
   flutter_test:
