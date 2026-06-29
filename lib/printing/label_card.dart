@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import 'fdbk_config.dart';
 import 'label_models.dart';
 
 /// Logical width the label is laid out at. The capture step scales this up to
@@ -16,12 +15,30 @@ const int kPrintWidthDots = 576;
 /// pixelRatio for RepaintBoundary.toImage() to reach [kPrintWidthDots].
 const double kLabelCapturePixelRatio = kPrintWidthDots / kLabelLogicalWidth;
 
-/// One adhesive label, rendered as a pure black-on-white widget suited to a
-/// thermal label printer. The same widget is used for the on-screen preview
-/// and for the rasterised image sent to the printer.
+/// QR size on the label; the 5 feedback faces span this same width.
+const double _kQrSize = 122;
+
+/// One adhesive label, rendered black-on-white for a thermal printer:
+///   [Adelaide Oval logo]
+///   Suite name (large)
+///   ──────────────
+///   Order detail (drink + variants + notes)
+///   ──────────────
+///   Date & time   ·   transaction id
+///   ──────────────
+///   QR code
+///   [5 B&W faces]  FDBK
 class LabelCard extends StatelessWidget {
   final LabelData data;
   const LabelCard({super.key, required this.data});
+
+  static const List<String> _faceAssets = [
+    'assets/images/face_1.png', // happiest
+    'assets/images/face_2.png',
+    'assets/images/face_3.png',
+    'assets/images/face_4.png',
+    'assets/images/face_5.png', // angriest
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -33,35 +50,46 @@ class LabelCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Heading — Suite name on a solid bar for prominence.
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            color: Colors.black,
-            child: Text(
-              data.suiteName.toUpperCase(),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                height: 1.1,
+          // Adelaide Oval logo, forced solid black so it prints crisp (not a
+          // dithered grey) — the whole label is black-on-white.
+          Center(
+            child: ColorFiltered(
+              colorFilter:
+                  const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+              child: Image.asset(
+                'assets/images/adelaide_oval_logo.png',
+                height: 52,
+                fit: BoxFit.contain,
               ),
             ),
           ),
           const SizedBox(height: 10),
-          // Product
+          // Suite name — large.
+          Text(
+            data.suiteName,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 27,
+              fontWeight: FontWeight.w800,
+              height: 1.05,
+            ),
+          ),
+          _rule(),
+          // Order detail.
           Text(
             data.productName,
             style: const TextStyle(
               color: Colors.black,
-              fontSize: 26,
+              fontSize: 23,
               fontWeight: FontWeight.w800,
               height: 1.05,
             ),
           ),
           if (data.variants.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               data.variants.join('  ·  '),
               style: const TextStyle(
@@ -73,64 +101,99 @@ class LabelCard extends StatelessWidget {
             ),
           ],
           if (data.notes != null && data.notes!.trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               '“${data.notes!.trim()}”',
               style: const TextStyle(
-                color: Colors.black,
-                fontSize: 14,
-                fontStyle: FontStyle.italic,
-              ),
+                  color: Colors.black, fontSize: 14, fontStyle: FontStyle.italic),
             ),
           ],
-          const SizedBox(height: 10),
-          Container(height: 2, color: Colors.black),
-          const SizedBox(height: 10),
-          // Feedback + QR
+          _rule(),
+          // Date & time + transaction id.
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      FdbkConfig.servicePrompt,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Scan to tell us',
-                      style: TextStyle(color: Colors.black, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              // QR area — driven by FDBK payload (placeholder for now).
-              QrImageView(
-                data: data.qrData,
-                version: QrVersions.auto,
-                size: 104,
-                gapless: true,
-                backgroundColor: Colors.white,
-                // ignore: deprecated_member_use — keep wide plugin compatibility
-                foregroundColor: Colors.black,
-              ),
+              Text(_dateTime(data.placedAt),
+                  style: const TextStyle(color: Colors.black, fontSize: 13)),
+              Text(data.txnId,
+                  style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold)),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Order #${data.orderId}',
-            style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+          _rule(),
+          // QR + feedback faces + FDBK.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  QrImageView(
+                    data: data.qrData,
+                    version: QrVersions.auto,
+                    size: _kQrSize,
+                    gapless: true,
+                    backgroundColor: Colors.white,
+                    // ignore: deprecated_member_use — wide plugin compatibility
+                    foregroundColor: Colors.black,
+                  ),
+                  const SizedBox(height: 5),
+                  // 5 faces spanning the QR width (happy → sad).
+                  SizedBox(
+                    width: _kQrSize,
+                    child: Row(
+                      children: [
+                        for (final f in _faceAssets)
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 1),
+                              child: _bwFace(f),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Text(
+                  'FDBK',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  /// A full-width black rule with breathing room.
+  Widget _rule() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Container(height: 2, color: Colors.black),
+      );
+
+  /// A feedback face forced to solid black (the source art is coloured
+  /// line-art on transparency, so srcIn gives a clean monochrome icon).
+  Widget _bwFace(String asset) => ColorFiltered(
+        colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+        child: Image.asset(asset, height: 24, fit: BoxFit.contain),
+      );
+
+  static String _dateTime(DateTime dt) {
+    final t = dt.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.day)}/${two(t.month)}/${t.year}  ${two(t.hour)}:${two(t.minute)}';
   }
 }

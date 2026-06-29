@@ -27,6 +27,28 @@ class _LabelPreviewScreenState extends State<LabelPreviewScreen> {
   late final List<GlobalKey> _keys =
       List.generate(_labels.length, (_) => GlobalKey());
   bool _printing = false;
+  bool _precached = false;
+
+  // Force-decode the label artwork into the image cache before any capture, so
+  // RepaintBoundary.toImage() never grabs a half-loaded (blank) logo/face.
+  static const _assets = [
+    'assets/images/adelaide_oval_logo.png',
+    'assets/images/face_1.png',
+    'assets/images/face_2.png',
+    'assets/images/face_3.png',
+    'assets/images/face_4.png',
+    'assets/images/face_5.png',
+  ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_precached) return;
+    _precached = true;
+    for (final a in _assets) {
+      precacheImage(AssetImage(a), context);
+    }
+  }
 
   /// Capture a label's RepaintBoundary as PNG bytes at the print resolution.
   Future<Uint8List?> _capturePng(GlobalKey key) async {
@@ -96,25 +118,28 @@ class _LabelPreviewScreenState extends State<LabelPreviewScreen> {
               ),
             ),
           Expanded(
-            child: ListView.separated(
+            // Non-lazy: every label boundary is realised + painted so it can
+            // be captured even when scrolled off-screen.
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              itemCount: _labels.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 16),
-              itemBuilder: (context, i) => Column(
+              child: Column(
                 children: [
-                  Text('Label ${i + 1} of ${_labels.length}',
-                      style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 6),
-                  // RepaintBoundary at native label size = what we rasterise.
-                  Material(
-                    elevation: 2,
-                    child: RepaintBoundary(
-                      key: _keys[i],
-                      child: LabelCard(data: _labels[i]),
+                  for (var i = 0; i < _labels.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 16),
+                    Text('Label ${i + 1} of ${_labels.length}',
+                        style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    // RepaintBoundary at native label size = what we rasterise.
+                    Material(
+                      elevation: 2,
+                      child: RepaintBoundary(
+                        key: _keys[i],
+                        child: LabelCard(data: _labels[i]),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
