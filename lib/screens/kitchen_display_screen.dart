@@ -8,8 +8,9 @@ import '../services/kitchen_station_service.dart';
 import '../services/ticket_printer.dart';
 import 'station_setup_screen.dart';
 
-const _kBlue = Color(0xFF2C7BE5);
-const _kGreen = Color(0xFF38A169);
+const _kBlue = Color(0xFF2C7BE5); // Start
+const _kAmber = Color(0xFFDD9B36); // Made (being prepared)
+const _kGreen = Color(0xFF38A169); // Serve (ready to hand off)
 const _kServeGreen = Color(0xFF2F855A);
 
 /// The Kitchen Display System rail. A card grid of order tickets with
@@ -24,13 +25,15 @@ class KitchenDisplayScreen extends StatefulWidget {
   State<KitchenDisplayScreen> createState() => _KitchenDisplayScreenState();
 }
 
-enum _Tab { open, done, hold }
+enum _Tab { open, completed, hold }
 
 class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
-  // The whole active rail in one fetch: NEW + IN_PROGRESS (Open),
-  // READY (Done — made, awaiting hand-off), ON_HOLD. SERVED/CANCELLED are
-  // terminal and drop off the board.
+  // Active rail (Open): NEW + IN_PROGRESS + READY — one ticket cycles
+  // Start → Made → Serve here on the main board. ON_HOLD lives here too.
   List<KitchenTicket> _active = [];
+  // Completed (delivered) orders for the Completed tab — fetched separately
+  // since SERVED is terminal and not part of the active feed.
+  List<KitchenTicket> _served = [];
   _Tab _tab = _Tab.open;
   bool _loading = true;
   bool _syncing = false; // a background write is in flight
@@ -65,7 +68,14 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
 
   Future<void> _refresh() async {
     try {
-      final active = await KitchenStationService.getTickets(_stationId);
+      // Active board + completed (served) list in parallel.
+      final results = await Future.wait([
+        KitchenStationService.getTickets(_stationId),
+        KitchenStationService.getTickets(_stationId, status: 'SERVED'),
+      ]);
+      final active = results[0];
+      // Newest-delivered first for the completed screen.
+      final served = results[1].reversed.toList();
       if (!mounted) return;
       for (final t in active) {
         if (_printed.add(t.kitchenOrderId)) {
@@ -74,6 +84,7 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
       }
       setState(() {
         _active = active;
+        _served = served;
         _loading = false;
         _error = null;
       });
@@ -100,17 +111,29 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
       clearStartedAt: s == 'NEW',
       readyAt: s == 'READY' ? now : t.readyAt,
       clearReadyAt: s == 'IN_PROGRESS' || s == 'NEW' || s == 'ON_HOLD',
+      servedAt: s == 'SERVED' ? now : t.servedAt,
+      clearServedAt: s != 'SERVED',
     );
+    bool notThis(KitchenTicket x) => x.kitchenOrderId != t.kitchenOrderId;
     setState(() {
-      if (s == 'SERVED' || s == 'CANCELLED') {
-        _active = _active
-            .where((x) => x.kitchenOrderId != t.kitchenOrderId)
-            .toList();
+      if (s == 'CANCELLED') {
+        _active = _active.where(notThis).toList();
+        _served = _served.where(notThis).toList();
+      } else if (s == 'SERVED') {
+        // Move off the board into the Completed list.
+        _active = _active.where(notThis).toList();
+        _served = [updated, ..._served.where(notThis)];
       } else {
-        _active = [
-          for (final x in _active)
-            x.kitchenOrderId == t.kitchenOrderId ? updated : x,
-        ];
+        // An active state (including reopening a served ticket).
+        _served = _served.where(notThis).toList();
+        if (_active.any((x) => x.kitchenOrderId == t.kitchenOrderId)) {
+          _active = [
+            for (final x in _active)
+              x.kitchenOrderId == t.kitchenOrderId ? updated : x,
+          ];
+        } else {
+          _active = [updated, ..._active];
+        }
       }
     });
   }
@@ -128,14 +151,12 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
         _refresh();
       }
     }).catchError((Object e) {
+      // Transient/timing hiccup — the optimistic state is reconciled by the
+      // refresh below (and the 12s poll), so don't bother the operator with a
+      // banner. Just log it and quietly resync.
+      developer.log('KDS write failed, reconciling: $e');
       if (!mounted) return;
       setState(() => _syncing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Couldn’t sync — reverted: $e'),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
       _refresh();
     });
   }
@@ -278,10 +299,10 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
 
   // ---- Tabs / lists ---------------------------------------------------------
 
+  // Open board carries the whole live lifecycle — NEW, IN_PROGRESS and READY
+  // — so one ticket cycles Start → Made → Serve in place. Completed = served.
   List<KitchenTicket> get _openTickets =>
-      _active.where((t) => t.isNew || t.isInProgress).toList();
-  List<KitchenTicket> get _doneTickets =>
-      _active.where((t) => t.isReady).toList();
+      _active.where((t) => t.isNew || t.isInProgress || t.isReady).toList();
   List<KitchenTicket> get _holdTickets =>
       _active.where((t) => t.isOnHold).toList();
 
@@ -291,8 +312,8 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
         return _openTickets;
       case _Tab.hold:
         return _holdTickets;
-      case _Tab.done:
-        return _doneTickets;
+      case _Tab.completed:
+        return _served;
     }
   }
 
@@ -307,7 +328,7 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
           children: [
             _tabChip('${_openTickets.length} Open', _Tab.open),
             const SizedBox(width: 8),
-            _tabChip('${_doneTickets.length} Done', _Tab.done),
+            _tabChip('${_served.length} Completed', _Tab.completed),
             const SizedBox(width: 8),
             _tabChip('${_holdTickets.length} On Hold', _Tab.hold),
           ],
@@ -406,7 +427,7 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
               ? 'No open orders'
               : _tab == _Tab.hold
                   ? 'Nothing on hold'
-                  : 'Nothing ready',
+                  : 'No completed orders',
           style: TextStyle(color: Colors.grey.shade600, fontSize: 18),
         ),
       );
@@ -444,6 +465,7 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
   }
 
   Color _headerColor(KitchenTicket t) {
+    if (t.isServed) return const Color(0xFF718096); // slate — completed
     if (t.isReady) return _kGreen;
     if (t.isOnHold) return Colors.blueGrey;
     final age = _liveAge(t);
@@ -485,10 +507,12 @@ String fmtClock(DateTime dt) {
   }
 }
 
-/// Start → Done → Serve progress, with a leading Back step. Completed stages
-/// show a check; the next actionable stage is the highlighted button; future
-/// stages are greyed. Used on the card and (larger) in the detail modal.
-class _StageBar extends StatelessWidget {
+/// A single forward-action button that cycles through the lifecycle on the
+/// same button, changing label + colour at each state:
+///   Start (blue) → Made (amber) → Serve (green).
+/// A leading Back step reverses one stage. Used on the card and (larger) in
+/// the detail modal.
+class _ActionBar extends StatelessWidget {
   final KitchenTicket ticket;
   final VoidCallback onStart;
   final VoidCallback onDone;
@@ -496,101 +520,81 @@ class _StageBar extends StatelessWidget {
   final VoidCallback onBack;
   final double height;
 
-  const _StageBar({
+  const _ActionBar({
     required this.ticket,
     required this.onStart,
     required this.onDone,
     required this.onServe,
     required this.onBack,
-    this.height = 42,
+    this.height = 44,
   });
 
-  static const _labels = ['Start', 'Done', 'Serve'];
-  static const _activeColors = [_kBlue, _kGreen, _kServeGreen];
+  /// (label, colour, action) for the current forward step.
+  (String, Color, VoidCallback)? _forward() {
+    switch (ticket.status) {
+      case 'NEW':
+        return ('Start', _kBlue, onStart);
+      case 'IN_PROGRESS':
+        return ('Made', _kAmber, onDone);
+      case 'READY':
+        return ('Serve', _kGreen, onServe);
+      default:
+        return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final done = ticket.doneCount;
-    final fonts = height >= 50 ? 15.0 : 13.0;
+    final fwd = _forward();
+    final canBack = ticket.doneCount > 0;
+    final fontSize = height >= 50 ? 18.0 : 15.0;
     return SizedBox(
       height: height,
       child: Row(
         children: [
-          // Back (step a stage backwards). Disabled when nothing to undo.
+          // Back — step one stage backwards. Always shown so the control is
+          // consistent; greyed (not actionable) on NEW, which has no prior
+          // stage to return to.
           SizedBox(
             width: height,
             height: height,
             child: OutlinedButton(
-              onPressed: done > 0 ? onBack : null,
+              onPressed: canBack ? onBack : null,
               style: OutlinedButton.styleFrom(
                 padding: EdgeInsets.zero,
-                foregroundColor: Colors.blueGrey,
+                foregroundColor: Colors.blueGrey.shade700,
+                backgroundColor:
+                    canBack ? const Color(0xFFEDF2F7) : Colors.grey.shade50,
+                disabledForegroundColor: Colors.grey.shade400,
                 side: BorderSide(
-                    color: done > 0
-                        ? Colors.blueGrey
+                    color: canBack
+                        ? Colors.blueGrey.shade400
                         : Colors.grey.shade300),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6)),
               ),
-              child: const Icon(Icons.undo, size: 18),
+              child: const Icon(Icons.arrow_back, size: 20),
             ),
           ),
-          const SizedBox(width: 6),
-          for (var i = 0; i < 3; i++) ...[
-            Expanded(child: _seg(i, done, fonts)),
-            if (i < 2) const SizedBox(width: 6),
-          ],
+          const SizedBox(width: 8),
+          // The one cycling action button.
+          Expanded(
+            child: fwd == null
+                ? const SizedBox.shrink()
+                : ElevatedButton(
+                    onPressed: fwd.$3,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: fwd.$2,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6)),
+                    ),
+                    child: Text(fwd.$1,
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: fontSize)),
+                  ),
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _seg(int i, int done, double fontSize) {
-    final completed = i < done;
-    final active = i == done;
-    final onTap = !active ? null : [onStart, onDone, onServe][i];
-
-    final Color bg;
-    final Color fg;
-    if (completed) {
-      bg = const Color(0xFFE6F4EA);
-      fg = _kServeGreen;
-    } else if (active) {
-      bg = _activeColors[i];
-      fg = Colors.white;
-    } else {
-      bg = Colors.grey.shade100;
-      fg = Colors.grey.shade400;
-    }
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(6),
-          border: active ? null : Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (completed)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.check, size: 16, color: fg),
-              ),
-            Flexible(
-              child: Text(_labels[i],
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.bold,
-                      fontSize: fontSize)),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -670,13 +674,47 @@ class _TicketCard extends StatelessWidget {
                       ),
                     ),
                   )
-                : _StageBar(
-                    ticket: ticket,
-                    onStart: onStart,
-                    onDone: onDone,
-                    onServe: onServe,
-                    onBack: onBack,
-                  ),
+                : ticket.isServed
+                    ? _servedFooter()
+                    : _ActionBar(
+                        ticket: ticket,
+                        onStart: onStart,
+                        onDone: onDone,
+                        onServe: onServe,
+                        onBack: onBack,
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Completed-tab footer: when it was delivered + a Reopen (step back to
+  // READY) for a mistaken serve.
+  Widget _servedFooter() {
+    final when = ticket.servedAt ?? ticket.readyAt;
+    return SizedBox(
+      height: 42,
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, color: _kServeGreen, size: 20),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              when != null ? 'Served ${fmtClock(when)}' : 'Served',
+              style: const TextStyle(
+                  color: _kServeGreen, fontWeight: FontWeight.w600),
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: onBack,
+            icon: const Icon(Icons.undo, size: 16),
+            label: const Text('Reopen'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.blueGrey,
+              side: const BorderSide(color: Colors.blueGrey),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
           ),
         ],
       ),
@@ -733,6 +771,7 @@ class _TicketCard extends StatelessWidget {
   }
 
   String _rightLabel() {
+    if (ticket.isServed) return 'SERVED';
     if (ticket.isReady) return 'READY';
     if (ticket.isInProgress) {
       final started = ticket.startedAt;
@@ -892,6 +931,8 @@ class _TicketModal extends StatelessWidget {
                     ticket.startedAt != null ? fmtClock(ticket.startedAt!) : '—'),
                 _stamp('Ready',
                     ticket.readyAt != null ? fmtClock(ticket.readyAt!) : '—'),
+                _stamp('Served',
+                    ticket.servedAt != null ? fmtClock(ticket.servedAt!) : '—'),
               ],
             ),
           ),
@@ -913,61 +954,80 @@ class _TicketModal extends StatelessWidget {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Column(
-                children: [
-                  if (ticket.isOnHold)
-                    SizedBox(
+              child: ticket.isServed
+                  // Completed: just a Reopen (un-serve) for a mistaken serve.
+                  ? SizedBox(
                       height: 52,
                       width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: onResume,
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Resume',
+                      child: OutlinedButton.icon(
+                        onPressed: onBack,
+                        icon: const Icon(Icons.undo),
+                        label: const Text('Reopen order',
                             style: TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: _kBlue,
-                            foregroundColor: Colors.white),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.blueGrey,
+                          side: const BorderSide(color: Colors.blueGrey),
+                        ),
                       ),
                     )
-                  else
-                    _StageBar(
-                      ticket: ticket,
-                      onStart: onStart,
-                      onDone: onDone,
-                      onServe: onServe,
-                      onBack: onBack,
-                      height: 54,
-                    ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      if (!ticket.isOnHold)
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: onHold,
-                            icon: const Icon(Icons.pause),
-                            label: const Text('Hold'),
-                            style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.blueGrey,
-                                side: const BorderSide(color: Colors.blueGrey)),
+                  : Column(
+                      children: [
+                        if (ticket.isOnHold)
+                          SizedBox(
+                            height: 52,
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: onResume,
+                              icon: const Icon(Icons.play_arrow),
+                              label: const Text('Resume',
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: _kBlue,
+                                  foregroundColor: Colors.white),
+                            ),
+                          )
+                        else
+                          _ActionBar(
+                            ticket: ticket,
+                            onStart: onStart,
+                            onDone: onDone,
+                            onServe: onServe,
+                            onBack: onBack,
+                            height: 54,
                           ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            if (!ticket.isOnHold)
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: onHold,
+                                  icon: const Icon(Icons.pause),
+                                  label: const Text('Hold'),
+                                  style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.blueGrey,
+                                      side: const BorderSide(
+                                          color: Colors.blueGrey)),
+                                ),
+                              ),
+                            if (!ticket.isOnHold) const SizedBox(width: 10),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: onCancel,
+                                icon: const Icon(Icons.close),
+                                label: const Text('Cancel'),
+                                style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    side: BorderSide(color: Colors.red.shade300)),
+                              ),
+                            ),
+                          ],
                         ),
-                      if (!ticket.isOnHold) const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: onCancel,
-                          icon: const Icon(Icons.close),
-                          label: const Text('Cancel'),
-                          style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: BorderSide(color: Colors.red.shade300)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                      ],
+                    ),
             ),
           ),
         ],

@@ -43,6 +43,7 @@ class KitchenTicket {
   final DateTime receivedAt;
   final DateTime? startedAt;
   final DateTime? readyAt;
+  final DateTime? servedAt;
   final int? prepSeconds;
   // Server-computed so colour/timer don't depend on the tablet clock.
   final int secondsSinceReceived;
@@ -58,6 +59,7 @@ class KitchenTicket {
     required this.receivedAt,
     this.startedAt,
     this.readyAt,
+    this.servedAt,
     this.prepSeconds,
     required this.secondsSinceReceived,
     this.secondsInPrep,
@@ -98,6 +100,8 @@ class KitchenTicket {
     bool clearStartedAt = false,
     DateTime? readyAt,
     bool clearReadyAt = false,
+    DateTime? servedAt,
+    bool clearServedAt = false,
   }) {
     return KitchenTicket(
       kitchenOrderId: kitchenOrderId,
@@ -108,6 +112,7 @@ class KitchenTicket {
       receivedAt: receivedAt,
       startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
       readyAt: clearReadyAt ? null : (readyAt ?? this.readyAt),
+      servedAt: clearServedAt ? null : (servedAt ?? this.servedAt),
       prepSeconds: prepSeconds,
       secondsSinceReceived: secondsSinceReceived,
       secondsInPrep: secondsInPrep,
@@ -143,6 +148,7 @@ class KitchenTicket {
       receivedAt: safeDate(pick('received_at')) ?? DateTime.now(),
       startedAt: safeDate(pick('started_at')),
       readyAt: safeDate(pick('ready_at')),
+      servedAt: safeDate(pick('served_at')),
       prepSeconds: safeInt(pick('prep_seconds')),
       secondsSinceReceived: safeInt(pick('seconds_since_received')) ?? 0,
       secondsInPrep: safeInt(pick('seconds_in_prep')),
