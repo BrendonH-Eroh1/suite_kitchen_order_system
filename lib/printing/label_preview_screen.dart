@@ -1,0 +1,153 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+
+import '../models/kitchen_ticket.dart';
+import '../services/device_credentials.dart';
+import 'brother_service.dart';
+import 'label_card.dart';
+import 'label_models.dart';
+
+/// Shows the labels for an order — one per drink/cup — exactly as they'll
+/// print, and prints them to the configured Brother QL-810W. Works as a pure
+/// preview even with no printer set (the Print button is just disabled), so
+/// the label layout can be validated before any hardware is connected.
+class LabelPreviewScreen extends StatefulWidget {
+  final KitchenTicket ticket;
+  const LabelPreviewScreen({super.key, required this.ticket});
+
+  @override
+  State<LabelPreviewScreen> createState() => _LabelPreviewScreenState();
+}
+
+class _LabelPreviewScreenState extends State<LabelPreviewScreen> {
+  late final List<LabelData> _labels = LabelData.forTicket(widget.ticket);
+  late final List<GlobalKey> _keys =
+      List.generate(_labels.length, (_) => GlobalKey());
+  bool _printing = false;
+
+  Future<ui.Image?> _capture(GlobalKey key) async {
+    final boundary =
+        key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+    return boundary.toImage(pixelRatio: kLabelCapturePixelRatio);
+  }
+
+  Future<void> _printAll() async {
+    if (!DeviceCredentials.canPrint || _printing) return;
+    final ip = DeviceCredentials.printerIp!;
+    setState(() => _printing = true);
+    var ok = 0;
+    var fail = 0;
+    String? lastError;
+    for (final key in _keys) {
+      final image = await _capture(key);
+      if (image == null) {
+        fail++;
+        continue;
+      }
+      final result = await BrotherService.printImage(image, ipAddress: ip);
+      if (result.ok) {
+        ok++;
+      } else {
+        fail++;
+        lastError = result.message;
+      }
+      // Small gap so the printer queues each label cleanly.
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+    }
+    if (!mounted) return;
+    setState(() => _printing = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(fail == 0
+            ? 'Printed $ok label${ok == 1 ? '' : 's'}'
+            : 'Printed $ok, $fail failed${lastError != null ? ' — $lastError' : ''}'),
+        backgroundColor: fail == 0 ? Colors.green : Colors.red.shade700,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canPrint = DeviceCredentials.canPrint;
+    return Scaffold(
+      backgroundColor: const Color(0xFFEFEFEF),
+      appBar: AppBar(
+        title: Text('Print Labels (${_labels.length})'),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          if (!canPrint)
+            Container(
+              width: double.infinity,
+              color: Colors.amber.shade100,
+              padding: const EdgeInsets.all(12),
+              child: const Text(
+                'Preview only — set the printer IP and turn printing on in '
+                'Setup (⋮ → Change station / operator) to print.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: _labels.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 16),
+              itemBuilder: (context, i) => Column(
+                children: [
+                  Text('Label ${i + 1} of ${_labels.length}',
+                      style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  // RepaintBoundary at native label size = what we rasterise.
+                  Material(
+                    elevation: 2,
+                    child: RepaintBoundary(
+                      key: _keys[i],
+                      child: LabelCard(data: _labels[i]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SizedBox(
+                height: 54,
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: canPrint && !_printing ? _printAll : null,
+                  icon: _printing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.print),
+                  label: Text(
+                    _printing
+                        ? 'Printing…'
+                        : 'Print ${_labels.length} label${_labels.length == 1 ? '' : 's'}',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2C7BE5),
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

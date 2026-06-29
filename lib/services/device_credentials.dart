@@ -18,12 +18,17 @@ class DeviceCredentials {
   static const String _stationNameKey = 'kds_station_name';
   // The operator (barista) staff id stamped on ticket actions for audit.
   static const String _operatorStaffIdKey = 'kds_operator_staff_id';
+  // Brother label printer (QL-810W) — WiFi IP + whether printing is enabled.
+  static const String _printerIpKey = 'kds_printer_ip';
+  static const String _printerEnabledKey = 'kds_printer_enabled';
 
   static String? _deviceId;
   static String? _pat;
   static int? _stationId;
   static String? _stationName;
   static int? _operatorStaffId;
+  static String? _printerIp;
+  static bool _printerEnabled = false;
 
   /// True when both auth fields are present in storage.
   static bool get hasCredentials =>
@@ -38,6 +43,12 @@ class DeviceCredentials {
   static int? get stationId => _stationId;
   static String? get stationName => _stationName;
   static int? get operatorStaffId => _operatorStaffId;
+  static String? get printerIp => _printerIp;
+  static bool get printerEnabled => _printerEnabled;
+
+  /// True when label printing is switched on and an IP is set.
+  static bool get canPrint =>
+      _printerEnabled && _printerIp != null && _printerIp!.trim().isNotEmpty;
 
   /// Read from SharedPreferences into the in-memory cache. Call once at
   /// app startup before `runApp`.
@@ -48,6 +59,24 @@ class DeviceCredentials {
     _stationId = prefs.getInt(_stationIdKey);
     _stationName = prefs.getString(_stationNameKey);
     _operatorStaffId = prefs.getInt(_operatorStaffIdKey);
+    _printerIp = prefs.getString(_printerIpKey);
+    _printerEnabled = prefs.getBool(_printerEnabledKey) ?? false;
+  }
+
+  static Future<void> savePrinter({
+    required bool enabled,
+    required String? ip,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_printerEnabledKey, enabled);
+    if (ip == null || ip.trim().isEmpty) {
+      await prefs.remove(_printerIpKey);
+      _printerIp = null;
+    } else {
+      await prefs.setString(_printerIpKey, ip.trim());
+      _printerIp = ip.trim();
+    }
+    _printerEnabled = enabled;
   }
 
   static Future<void> save({

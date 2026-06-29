@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import '../config/app_info.dart';
 import '../models/kitchen_ticket.dart';
+import '../printing/label_preview_screen.dart';
 import '../services/device_credentials.dart';
 import '../services/kitchen_station_service.dart';
 import '../services/ticket_printer.dart';
@@ -917,6 +918,16 @@ class _TicketModal extends StatelessWidget {
                           color: color,
                           fontWeight: FontWeight.bold,
                           fontSize: 13)),
+                ),
+                const SizedBox(width: 4),
+                // Print the order's labels (one per drink/cup).
+                IconButton(
+                  tooltip: 'Print labels',
+                  icon: const Icon(Icons.print),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => LabelPreviewScreen(ticket: ticket)),
+                  ),
                 ),
               ],
             ),

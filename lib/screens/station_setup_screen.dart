@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import '../config/app_info.dart';
+import '../models/kitchen_ticket.dart';
+import '../printing/label_preview_screen.dart';
 import '../services/device_credentials.dart';
 import '../services/kitchen_station_service.dart';
 import 'kitchen_display_screen.dart';
 import 'qr_scan_screen.dart';
+
+/// Brother Wireless Direct default gateway IP — the printer's own WiFi AP.
+/// When the tablet is joined directly to the printer's WiFi (the test setup),
+/// the printer is reachable here.
+const String _kWirelessDirectIp = '192.168.118.1';
 
 /// One-time KDS provisioning: enter the device PAT (issued by the SiS admin
 /// app), pick the kitchen station this tablet serves, and set the operator
@@ -24,11 +31,14 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
       text: DeviceCredentials.deviceId ?? '');
   final _patCtl = TextEditingController();
   final _operatorCtl = TextEditingController();
+  final _printerIpCtl = TextEditingController(
+      text: DeviceCredentials.printerIp ?? _kWirelessDirectIp);
 
   List<KitchenStation> _stations = [];
   int? _selectedStationId;
   bool _loadingStations = false;
   bool _saving = false;
+  bool _printerEnabled = DeviceCredentials.printerEnabled;
   String? _error;
 
   @override
@@ -44,7 +54,42 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
     _deviceIdCtl.dispose();
     _patCtl.dispose();
     _operatorCtl.dispose();
+    _printerIpCtl.dispose();
     super.dispose();
+  }
+
+  Future<void> _savePrinter() async {
+    await DeviceCredentials.savePrinter(
+      enabled: _printerEnabled,
+      ip: _printerIpCtl.text,
+    );
+  }
+
+  /// Persist the printer config, then open the label preview on a sample
+  /// order so the operator can fire a real test label at the QL-810W.
+  Future<void> _testPrint() async {
+    await _savePrinter();
+    if (!mounted) return;
+    final sample = KitchenTicket(
+      kitchenOrderId: 0,
+      suiteId: 0,
+      suiteName: 'Test Suite 01',
+      itemCount: 1,
+      status: 'NEW',
+      receivedAt: DateTime.now(),
+      secondsSinceReceived: 0,
+      lines: const [
+        KitchenTicketLine(
+          name: 'Flat White',
+          qty: 1,
+          modifiers: ['Regular', 'Oat', '1 Sugar'],
+          notes: 'Extra hot',
+        ),
+      ],
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => LabelPreviewScreen(ticket: sample)),
+    );
   }
 
   /// Open the camera scanner; on a valid provisioning QR, fill the fields
@@ -112,6 +157,7 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
       stationName: station.stationName,
       operatorStaffId: operatorId,
     );
+    await _savePrinter();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const KitchenDisplayScreen()),
@@ -237,6 +283,39 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
                   labelText: 'Operator (barista) staff ID',
                   border: OutlineInputBorder(),
                 ),
+              ),
+              const Divider(height: 40),
+              const Text('3 · Label printer (optional)',
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              const Text(
+                'Brother QL-810W. For testing, join this tablet to the '
+                'printer’s own WiFi (Wireless Direct) — it’s then reachable '
+                'at $_kWirelessDirectIp.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Print labels'),
+                value: _printerEnabled,
+                onChanged: (v) => setState(() => _printerEnabled = v),
+              ),
+              TextField(
+                controller: _printerIpCtl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'Printer IP address',
+                  hintText: _kWirelessDirectIp,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _testPrint,
+                icon: const Icon(Icons.print),
+                label: const Text('Test print a sample label'),
               ),
               const SizedBox(height: 16),
               SizedBox(
