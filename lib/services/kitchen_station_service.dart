@@ -44,6 +44,8 @@ class KitchenStationService {
   static Future<void> hold(int id, int staffId) => _action(id, 'hold', staffId);
   static Future<void> resume(int id, int staffId) => _action(id, 'resume', staffId);
   static Future<void> serve(int id, int staffId) => _action(id, 'serve', staffId);
+  // Step the ticket back one stage (operator correction).
+  static Future<void> back(int id, int staffId) => _action(id, 'back', staffId);
 
   static Future<void> cancel(int id, int staffId, {String? reason}) async {
     final body = <String, dynamic>{'staff_id': staffId};

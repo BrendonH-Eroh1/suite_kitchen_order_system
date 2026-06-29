@@ -73,6 +73,48 @@ class KitchenTicket {
   /// Open rail = not yet finished or parked.
   bool get isOpen => isNew || isInProgress;
 
+  /// How many forward stages are complete: NEW=0, IN_PROGRESS=1, READY=2,
+  /// SERVED=3. Drives the Start/Done/Serve progress control.
+  int get doneCount {
+    switch (status) {
+      case 'IN_PROGRESS':
+        return 1;
+      case 'READY':
+        return 2;
+      case 'SERVED':
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  /// Local copy with overrides — used for optimistic UI updates so a tapped
+  /// action reflects instantly before the background write confirms. The
+  /// `clear*` flags null a timestamp out (a copyWith can't otherwise tell
+  /// "leave as-is" from "set to null").
+  KitchenTicket copyWith({
+    String? status,
+    DateTime? startedAt,
+    bool clearStartedAt = false,
+    DateTime? readyAt,
+    bool clearReadyAt = false,
+  }) {
+    return KitchenTicket(
+      kitchenOrderId: kitchenOrderId,
+      suiteId: suiteId,
+      suiteName: suiteName,
+      itemCount: itemCount,
+      status: status ?? this.status,
+      receivedAt: receivedAt,
+      startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
+      readyAt: clearReadyAt ? null : (readyAt ?? this.readyAt),
+      prepSeconds: prepSeconds,
+      secondsSinceReceived: secondsSinceReceived,
+      secondsInPrep: secondsInPrep,
+      lines: lines,
+    );
+  }
+
   factory KitchenTicket.fromMap(Map<String, dynamic> map) {
     dynamic pick(String k) => map[k.toUpperCase()] ?? map[k.toLowerCase()];
 
