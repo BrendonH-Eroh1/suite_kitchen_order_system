@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -5,12 +6,12 @@ import 'package:flutter/rendering.dart';
 
 import '../models/kitchen_ticket.dart';
 import '../services/device_credentials.dart';
-import 'brother_service.dart';
 import 'label_card.dart';
 import 'label_models.dart';
+import 'star_service.dart';
 
 /// Shows the labels for an order — one per drink/cup — exactly as they'll
-/// print, and prints them to the configured Brother QL-810W. Works as a pure
+/// print, and prints them to the configured Star TSP654IISK. Works as a pure
 /// preview even with no printer set (the Print button is just disabled), so
 /// the label layout can be validated before any hardware is connected.
 class LabelPreviewScreen extends StatefulWidget {
@@ -27,11 +28,14 @@ class _LabelPreviewScreenState extends State<LabelPreviewScreen> {
       List.generate(_labels.length, (_) => GlobalKey());
   bool _printing = false;
 
-  Future<ui.Image?> _capture(GlobalKey key) async {
+  /// Capture a label's RepaintBoundary as PNG bytes at the print resolution.
+  Future<Uint8List?> _capturePng(GlobalKey key) async {
     final boundary =
         key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null) return null;
-    return boundary.toImage(pixelRatio: kLabelCapturePixelRatio);
+    final image = await boundary.toImage(pixelRatio: kLabelCapturePixelRatio);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    return bytes?.buffer.asUint8List();
   }
 
   Future<void> _printAll() async {
@@ -42,12 +46,12 @@ class _LabelPreviewScreenState extends State<LabelPreviewScreen> {
     var fail = 0;
     String? lastError;
     for (final key in _keys) {
-      final image = await _capture(key);
-      if (image == null) {
+      final png = await _capturePng(key);
+      if (png == null) {
         fail++;
         continue;
       }
-      final result = await BrotherService.printImage(image, ipAddress: ip);
+      final result = await StarService.printPng(png, ipAddress: ip);
       if (result.ok) {
         ok++;
       } else {

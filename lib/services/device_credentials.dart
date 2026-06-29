@@ -18,7 +18,7 @@ class DeviceCredentials {
   static const String _stationNameKey = 'kds_station_name';
   // The operator (barista) staff id stamped on ticket actions for audit.
   static const String _operatorStaffIdKey = 'kds_operator_staff_id';
-  // Brother label printer (QL-810W) — WiFi IP + whether printing is enabled.
+  // Star TSP654IISK label printer — network IP + whether printing is enabled.
   static const String _printerIpKey = 'kds_printer_ip';
   static const String _printerEnabledKey = 'kds_printer_enabled';
 

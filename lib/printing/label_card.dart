@@ -8,10 +8,10 @@ import 'label_models.dart';
 /// the printer's dot width (see [kPrintWidthDots]) for a crisp raster.
 const double kLabelLogicalWidth = 384;
 
-/// Printable dot width of the target media. Brother QL-810W @ 300 dpi:
-///   62 mm continuous (DK-22205) ≈ 696 printable dots.
-/// Change this if you load a different tape width.
-const int kPrintWidthDots = 696;
+/// Printable dot width of the target media. Star TSP654IISK @ 203 dpi:
+///   80 mm linerless sticky paper = 576 printable dots.
+/// Change this if you move to a different printer/paper width.
+const int kPrintWidthDots = 576;
 
 /// pixelRatio for RepaintBoundary.toImage() to reach [kPrintWidthDots].
 const double kLabelCapturePixelRatio = kPrintWidthDots / kLabelLogicalWidth;

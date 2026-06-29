@@ -7,11 +7,6 @@ import '../services/kitchen_station_service.dart';
 import 'kitchen_display_screen.dart';
 import 'qr_scan_screen.dart';
 
-/// Brother Wireless Direct default gateway IP — the printer's own WiFi AP.
-/// When the tablet is joined directly to the printer's WiFi (the test setup),
-/// the printer is reachable here.
-const String _kWirelessDirectIp = '192.168.118.1';
-
 /// One-time KDS provisioning: enter the device PAT (issued by the SiS admin
 /// app), pick the kitchen station this tablet serves, and set the operator
 /// id stamped on ticket actions. Persisted in DeviceCredentials so the app
@@ -32,7 +27,7 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
   final _patCtl = TextEditingController();
   final _operatorCtl = TextEditingController();
   final _printerIpCtl = TextEditingController(
-      text: DeviceCredentials.printerIp ?? _kWirelessDirectIp);
+      text: DeviceCredentials.printerIp ?? '');
 
   List<KitchenStation> _stations = [];
   int? _selectedStationId;
@@ -290,9 +285,9 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
                       fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               const Text(
-                'Brother QL-810W. For testing, join this tablet to the '
-                'printer’s own WiFi (Wireless Direct) — it’s then reachable '
-                'at $_kWirelessDirectIp.',
+                'Star TSP654IISK (network). Put the printer on the same LAN as '
+                'this tablet and enter its IP. The printer must be in ESC/POS '
+                'emulation mode (set once via Star’s setup utility).',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 8),
@@ -307,7 +302,7 @@ class _StationSetupScreenState extends State<StationSetupScreen> {
                 keyboardType: TextInputType.url,
                 decoration: const InputDecoration(
                   labelText: 'Printer IP address',
-                  hintText: _kWirelessDirectIp,
+                  hintText: 'e.g. 192.168.1.50',
                   border: OutlineInputBorder(),
                 ),
               ),

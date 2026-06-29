@@ -38,7 +38,8 @@ dependencies:
   shared_preferences: ^2.2.2   # per-device PAT + station (DeviceCredentials)
   mobile_scanner: ^6.0.0       # QR provisioning (scan device PAT)
   qr_flutter: ^4.1.0
-  another_brother: ^2.2.4
+  esc_pos_utils_plus: ^2.0.4
+  image: ^4.9.1
 
 dev_dependencies:
   flutter_test:

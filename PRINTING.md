@@ -1,4 +1,4 @@
-# Label printing (Brother QL-810W) — pilot test guide
+# Label printing (Star TSP654IISK) — pilot test guide
 
 The KDS prints one **adhesive label per drink** (a 2× Latte line → 2 labels; a
 3-product order → 3+ labels). Each label has:
@@ -13,39 +13,45 @@ The KDS prints one **adhesive label per drink** (a 2× Latte line → 2 labels; 
 
 ## Hardware / connection
 
-Pilot printer: **Brother QL-810W** (WiFi + USB; *no Bluetooth*). It speaks
-Brother's raster language, so we render each label to an image and send it via
-the official Brother SDK (the `another_brother` Flutter plugin).
+Pilot printer: **Star TSP654IISK** — an 80 mm thermal printer using **linerless
+sticky (adhesive) paper**, **network (Ethernet)** connected. We render each
+label to an image and stream it as an **ESC/POS raster job over raw TCP 9100**
+(pure Dart — no native printer plugin), and the printer cuts after each label.
 
-Two ways to connect:
+> ⚠️ **The printer must be in ESC/POS emulation mode.** Star printers ship in
+> *Star Line Mode* by default, which won't render ESC/POS bytes. Switch it once
+> using Star's **Star Quick Setup / Configuration utility** (or the printer's
+> WebPRNT config page / memory-switch) to **ESC/POS** emulation. The maintained
+> Flutter Star-native plugin is currently broken on modern Flutter, so ESC/POS
+> over 9100 is the reliable path.
 
-| Mode | How | Printer IP | Note |
-|---|---|---|---|
-| **Wireless Direct** (pilot/test) | The printer makes its **own WiFi AP**; join the tablet to it in Android WiFi settings | **`192.168.118.1`** (default) | Tablet is then **off the venue LAN**, so live KDS orders won't load — use **Test print** + the preview, which need no network. |
-| **Infrastructure** (real use) | Printer joins the venue WiFi | the IP the venue assigns it | Tablet keeps proxy **and** printer on the same LAN — needed for printing real incoming orders. |
-
-Media: **62 mm continuous (DK-22205)** is the default. Different tape →
-change `QL700.W62` in `lib/printing/brother_service.dart` and `kPrintWidthDots`
-in `lib/printing/label_card.dart`.
+- Connect the printer by **Ethernet to the same LAN** as the tablet (tablet on
+  WiFi, printer wired, **same subnet**).
+- It needs an **IP address** — set a static IP, or read the one it got from a
+  printer **self-test** print.
+- Paper width: **80 mm** = **576 printable dots** (`kPrintWidthDots` in
+  `lib/printing/label_card.dart`; `printWidthDots` in
+  `lib/printing/star_service.dart`).
 
 ## Configure the printer (in the app)
 
 Setup screen (first run, or ⋮ → **Change station / operator**):
 
 1. Section **3 · Label printer** → turn **Print labels** on.
-2. **Printer IP** — `192.168.118.1` for Wireless Direct, else the venue IP.
-3. **Test print a sample label** — opens the preview on a sample order; tap
-   **Print** to fire a real label.
+2. Enter the printer's **IP address**.
+3. **Test print** — opens the preview on a sample order; tap **Print** to fire a
+   real label.
 
 ## Test steps
 
-1. Power on the QL-810W; load 62 mm tape; confirm WiFi is on.
-2. **Wireless Direct:** press the printer's WiFi button until it advertises its
-   AP, then join that network from the tablet's Android WiFi settings.
-3. In the app: enable printing, set IP `192.168.118.1`, **Test print** → **Print**.
-   - A label should print matching the on-screen preview.
-4. For a real order (infrastructure mode only): open a ticket → **🖨 Print
-   labels** (top-right of the detail modal) → **Print N labels**.
+1. Power on the TSP654IISK, load the 80 mm sticky roll, connect Ethernet.
+2. Set the printer to **ESC/POS emulation** (Star setup utility) — one time.
+3. Confirm the tablet and printer are on the **same subnet** (e.g. both
+   `192.168.1.x`); note the printer's IP from a self-test print.
+4. In the app: enable printing → enter IP → **Test print** → **Print**. A label
+   should print matching the on-screen preview.
+5. For a real order: open a ticket → **🖨 Print labels** (top-right of the detail
+   modal) → **Print N labels**.
 
 ## Notes / next
 
@@ -54,7 +60,9 @@ Setup screen (first run, or ⋮ → **Change station / operator**):
 - Printing is currently **manual** (from the ticket modal / test button).
   Auto-print on order arrival is a planned follow-up (needs off-screen
   rendering); the `services/ticket_printer.dart` hook is the seam for it.
-- First Android build pulls the Brother SDK via `another_brother` — do a clean
-  `flutter run` if Gradle caches act up.
-- `INTERNET` permission was added to the main manifest (required for network
-  printing **and** for the proxy to work in release builds).
+- Permissions: `INTERNET` (network printing + proxy in release builds) and
+  `ACCESS_NETWORK_STATE` are declared in the main manifest. The print path is
+  pure Dart (a raw socket + `esc_pos_utils_plus`), so there's no native printer
+  plugin to fail the build.
+- Only `StarService` (`lib/printing/star_service.dart`) is printer-specific — if
+  the printer/transport changes again, that's the one file to swap.
