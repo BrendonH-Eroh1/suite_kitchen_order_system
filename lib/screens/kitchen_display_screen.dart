@@ -69,13 +69,14 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
 
   Future<void> _refresh() async {
     try {
-      // Active board + completed (served) list in parallel.
+      // Active board + completed list in parallel. "Completed" = handed to a
+      // runner (PICKED_UP) or delivered (SERVED).
       final results = await Future.wait([
         KitchenStationService.getTickets(_stationId),
-        KitchenStationService.getTickets(_stationId, status: 'SERVED'),
+        KitchenStationService.getTickets(_stationId, status: 'PICKED_UP,SERVED'),
       ]);
       final active = results[0];
-      // Newest-delivered first for the completed screen.
+      // Newest first for the completed screen.
       final served = results[1].reversed.toList();
       if (!mounted) return;
       for (final t in active) {
@@ -120,8 +121,8 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
       if (s == 'CANCELLED') {
         _active = _active.where(notThis).toList();
         _served = _served.where(notThis).toList();
-      } else if (s == 'SERVED') {
-        // Move off the board into the Completed list.
+      } else if (s == 'PICKED_UP' || s == 'SERVED') {
+        // Off the board into the Completed list (picked up / delivered).
         _active = _active.where(notThis).toList();
         _served = [updated, ..._served.where(notThis)];
       } else {
@@ -166,8 +167,12 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
       () => KitchenStationService.start(t.kitchenOrderId, _operatorId));
   void _done(KitchenTicket t) => _do(t, 'READY',
       () => KitchenStationService.done(t.kitchenOrderId, _operatorId));
-  void _serve(KitchenTicket t) => _do(t, 'SERVED',
-      () => KitchenStationService.serve(t.kitchenOrderId, _operatorId));
+  // Kitchen hands the made drink to a runner (READY -> PICKED_UP). The order
+  // then lives on the fulfillment delivery list; the runner marks it
+  // delivered (serve). So the KDS "Serve" button means "picked up", not
+  // "delivered".
+  void _pickup(KitchenTicket t) => _do(t, 'PICKED_UP',
+      () => KitchenStationService.pickup(t.kitchenOrderId, _operatorId));
   void _hold(KitchenTicket t) => _do(t, 'ON_HOLD',
       () => KitchenStationService.hold(t.kitchenOrderId, _operatorId));
   void _resume(KitchenTicket t) => _do(t, 'IN_PROGRESS',
@@ -276,7 +281,7 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
         },
         onServe: () {
           Navigator.pop(ctx);
-          _serve(t);
+          _pickup(t);
         },
         onHold: () {
           Navigator.pop(ctx);
@@ -451,7 +456,7 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
           onOpen: () => _openTicket(t),
           onStart: () => _start(t),
           onDone: () => _done(t),
-          onServe: () => _serve(t),
+          onServe: () => _pickup(t),
           onResume: () => _resume(t),
           onBack: () => _stepBack(t),
         );
@@ -466,7 +471,7 @@ class _KitchenDisplayScreenState extends State<KitchenDisplayScreen> {
   }
 
   Color _headerColor(KitchenTicket t) {
-    if (t.isServed) return const Color(0xFF718096); // slate — completed
+    if (t.isCompleted) return const Color(0xFF718096); // slate — completed
     if (t.isReady) return _kGreen;
     if (t.isOnHold) return Colors.blueGrey;
     final age = _liveAge(t);
@@ -501,6 +506,8 @@ String fmtClock(DateTime dt) {
       return ('Ready', _kGreen);
     case 'ON_HOLD':
       return ('On hold', Colors.blueGrey);
+    case 'PICKED_UP':
+      return ('Picked up', _kServeGreen);
     case 'SERVED':
       return ('Served', _kServeGreen);
     default:
@@ -538,7 +545,8 @@ class _ActionBar extends StatelessWidget {
       case 'IN_PROGRESS':
         return ('Made', _kAmber, onDone);
       case 'READY':
-        return ('Serve', _kGreen, onServe);
+        // "Picked Up" — handed to the runner; delivery is the runner's job.
+        return ('Picked Up', _kGreen, onServe);
       default:
         return null;
     }
@@ -675,8 +683,8 @@ class _TicketCard extends StatelessWidget {
                       ),
                     ),
                   )
-                : ticket.isServed
-                    ? _servedFooter()
+                : ticket.isCompleted
+                    ? _completedFooter()
                     : _ActionBar(
                         ticket: ticket,
                         onStart: onStart,
@@ -690,19 +698,24 @@ class _TicketCard extends StatelessWidget {
     );
   }
 
-  // Completed-tab footer: when it was delivered + a Reopen (step back to
-  // READY) for a mistaken serve.
-  Widget _servedFooter() {
+  // Completed-tab footer: picked up by a runner / delivered, + a Reopen
+  // (step back) for a mistaken tap.
+  Widget _completedFooter() {
+    final delivered = ticket.isServed;
     final when = ticket.servedAt ?? ticket.readyAt;
+    final label = delivered
+        ? (when != null ? 'Served ${fmtClock(when)}' : 'Served')
+        : 'Picked up';
     return SizedBox(
       height: 42,
       child: Row(
         children: [
-          const Icon(Icons.check_circle, color: _kServeGreen, size: 20),
+          Icon(delivered ? Icons.check_circle : Icons.directions_run,
+              color: _kServeGreen, size: 20),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              when != null ? 'Served ${fmtClock(when)}' : 'Served',
+              label,
               style: const TextStyle(
                   color: _kServeGreen, fontWeight: FontWeight.w600),
             ),
@@ -773,6 +786,7 @@ class _TicketCard extends StatelessWidget {
 
   String _rightLabel() {
     if (ticket.isServed) return 'SERVED';
+    if (ticket.isPickedUp) return 'PICKED UP';
     if (ticket.isReady) return 'READY';
     if (ticket.isInProgress) {
       final started = ticket.startedAt;
@@ -965,8 +979,8 @@ class _TicketModal extends StatelessWidget {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: ticket.isServed
-                  // Completed: just a Reopen (un-serve) for a mistaken serve.
+              child: ticket.isCompleted
+                  // Completed (picked up / delivered): just a Reopen step-back.
                   ? SizedBox(
                       height: 52,
                       width: double.infinity,

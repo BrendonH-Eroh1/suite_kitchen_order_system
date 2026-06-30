@@ -70,21 +70,29 @@ class KitchenTicket {
   bool get isInProgress => status == 'IN_PROGRESS';
   bool get isReady => status == 'READY';
   bool get isOnHold => status == 'ON_HOLD';
+  bool get isPickedUp => status == 'PICKED_UP';
   bool get isServed => status == 'SERVED';
+
+  /// Completed from the kitchen's view: handed to a runner (PICKED_UP) or
+  /// delivered (SERVED).
+  bool get isCompleted => isPickedUp || isServed;
 
   /// Open rail = not yet finished or parked.
   bool get isOpen => isNew || isInProgress;
 
   /// How many forward stages are complete: NEW=0, IN_PROGRESS=1, READY=2,
-  /// SERVED=3. Drives the Start/Done/Serve progress control.
+  /// PICKED_UP=3, SERVED=4. Drives the Start/Made/Picked-Up progress control
+  /// and the Back step.
   int get doneCount {
     switch (status) {
       case 'IN_PROGRESS':
         return 1;
       case 'READY':
         return 2;
-      case 'SERVED':
+      case 'PICKED_UP':
         return 3;
+      case 'SERVED':
+        return 4;
       default:
         return 0;
     }

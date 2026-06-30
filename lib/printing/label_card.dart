@@ -15,8 +15,9 @@ const int kPrintWidthDots = 576;
 /// pixelRatio for RepaintBoundary.toImage() to reach [kPrintWidthDots].
 const double kLabelCapturePixelRatio = kPrintWidthDots / kLabelLogicalWidth;
 
-/// QR size on the label; the 5 feedback faces span this same width.
-const double _kQrSize = 122;
+/// QR size on the label (centred); the 5 feedback faces sit vertically beside.
+const double _kQrSize = 168;
+const double _kFaceSize = 28;
 
 /// One adhesive label, rendered black-on-white for a thermal printer:
 ///   [Adelaide Oval logo]
@@ -58,12 +59,12 @@ class LabelCard extends StatelessWidget {
                   const ColorFilter.mode(Colors.black, BlendMode.srcIn),
               child: Image.asset(
                 'assets/images/adelaide_oval_logo.png',
-                height: 52,
+                height: 46,
                 fit: BoxFit.contain,
               ),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           // Suite name — large.
           Text(
             data.suiteName,
@@ -123,53 +124,44 @@ class LabelCard extends StatelessWidget {
             ],
           ),
           _rule(),
-          // QR + feedback faces + FDBK.
+          // Feedback: prompt above, big centred QR, faces stacked beside it.
+          const Center(
+            child: Text(
+              'Provide your Feedback',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  QrImageView(
-                    data: data.qrData,
-                    version: QrVersions.auto,
-                    size: _kQrSize,
-                    gapless: true,
-                    backgroundColor: Colors.white,
-                    // ignore: deprecated_member_use — wide plugin compatibility
-                    foregroundColor: Colors.black,
-                  ),
-                  const SizedBox(height: 5),
-                  // 5 faces spanning the QR width (happy → sad).
-                  SizedBox(
-                    width: _kQrSize,
-                    child: Row(
-                      children: [
-                        for (final f in _faceAssets)
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 1),
-                              child: _bwFace(f),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+              // Left spacer balances the faces column so the QR sits centred.
+              const SizedBox(width: _kFaceSize + 12),
+              QrImageView(
+                data: data.qrData,
+                version: QrVersions.auto,
+                size: _kQrSize,
+                gapless: true,
+                backgroundColor: Colors.white,
+                // ignore: deprecated_member_use — wide plugin compatibility
+                foregroundColor: Colors.black,
               ),
               const SizedBox(width: 12),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 4),
-                child: Text(
-                  'FDBK',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                  ),
-                ),
+              // 5 faces vertical (happy → angry).
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final f in _faceAssets)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: _bwFace(f),
+                    ),
+                ],
               ),
             ],
           ),
@@ -180,7 +172,7 @@ class LabelCard extends StatelessWidget {
 
   /// A full-width black rule with breathing room.
   Widget _rule() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Container(height: 2, color: Colors.black),
       );
 
@@ -188,7 +180,7 @@ class LabelCard extends StatelessWidget {
   /// line-art on transparency, so srcIn gives a clean monochrome icon).
   Widget _bwFace(String asset) => ColorFiltered(
         colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
-        child: Image.asset(asset, height: 24, fit: BoxFit.contain),
+        child: Image.asset(asset, height: _kFaceSize, fit: BoxFit.contain),
       );
 
   static String _dateTime(DateTime dt) {

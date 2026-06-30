@@ -43,6 +43,9 @@ class KitchenStationService {
   static Future<void> done(int id, int staffId) => _action(id, 'done', staffId);
   static Future<void> hold(int id, int staffId) => _action(id, 'hold', staffId);
   static Future<void> resume(int id, int staffId) => _action(id, 'resume', staffId);
+  // Kitchen hands the made drink to a runner (READY -> PICKED_UP). The order
+  // stays on the fulfillment list; the runner marks it delivered (serve).
+  static Future<void> pickup(int id, int staffId) => _action(id, 'pickup', staffId);
   static Future<void> serve(int id, int staffId) => _action(id, 'serve', staffId);
   // Step the ticket back one stage (operator correction).
   static Future<void> back(int id, int staffId) => _action(id, 'back', staffId);
