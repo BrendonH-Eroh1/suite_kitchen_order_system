@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +7,7 @@ import 'config/app_info.dart';
 import 'screens/kitchen_display_screen.dart';
 import 'screens/station_setup_screen.dart';
 import 'services/device_credentials.dart';
+import 'services/remote_config_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +17,9 @@ Future<void> main() async {
     DeviceOrientation.landscapeRight,
   ]);
   await DeviceCredentials.load();
+  // Backend-owned FDBK label config (host + store code); best-effort, never
+  // blocks boot. Defaults apply until it lands.
+  unawaited(RemoteConfigService.load());
   runApp(const KitchenApp());
 }
 
