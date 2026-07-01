@@ -50,6 +50,7 @@ class LabelData {
     final suite = ticket.suiteName ?? 'Suite ${ticket.suiteId}';
     final qr = FdbkConfig.qrDataForSuite(
       suiteId: ticket.suiteId,
+      suiteCode: ticket.suiteCode,
       suiteName: ticket.suiteName,
     );
     final total = ticket.lines

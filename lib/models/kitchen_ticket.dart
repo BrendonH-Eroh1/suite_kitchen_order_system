@@ -38,6 +38,9 @@ class KitchenTicket {
   final int kitchenOrderId;
   final int suiteId;
   final String? suiteName;
+  /// Suite barcode (e.g. 'AOC002'), resolved server-side from the Suite
+  /// reference. Drives the printed label's FDBK feedback QR (device_id).
+  final String? suiteCode;
   final int itemCount;
   final String status; // NEW | IN_PROGRESS | READY | SERVED | ON_HOLD | CANCELLED
   final DateTime receivedAt;
@@ -54,6 +57,7 @@ class KitchenTicket {
     required this.kitchenOrderId,
     required this.suiteId,
     this.suiteName,
+    this.suiteCode,
     required this.itemCount,
     required this.status,
     required this.receivedAt,
@@ -151,6 +155,7 @@ class KitchenTicket {
       kitchenOrderId: safeInt(pick('kitchen_order_id')) ?? 0,
       suiteId: safeInt(pick('suite_id')) ?? 0,
       suiteName: pick('suite_name')?.toString(),
+      suiteCode: pick('suite_code')?.toString(),
       itemCount: safeInt(pick('item_count')) ?? 0,
       status: pick('status')?.toString() ?? 'NEW',
       receivedAt: safeDate(pick('received_at')) ?? DateTime.now(),
